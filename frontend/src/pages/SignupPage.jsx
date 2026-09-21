@@ -13,7 +13,6 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
