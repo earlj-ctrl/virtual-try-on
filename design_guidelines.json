@@ -1,0 +1,198 @@
+{
+  "design_directions": [
+    {
+      "id": "direction_1_atelier_ai",
+      "name": "Atelier AI / Minimal Haute-Couture (SELECTED)",
+      "description": "High-end luxury editorial aesthetics paired with dark/light obsidian & champagne tones. Architectural wireframes, soft grain backdrop, bold asymmetrical typography, and glowing neural accents for virtual try-on features.",
+      "status": "FINALIZED"
+    },
+    {
+      "id": "direction_2_swiss_editorial",
+      "name": "Swiss Modernist Studio",
+      "description": "Grid-heavy, stark monochrome with vibrant cobalt accents. Heavy display sans headings, sharp rectangular components, cardless data layouts, and high-density product feeds.",
+      "status": "EXPLORED"
+    },
+    {
+      "id": "direction_3_cyber_atelier",
+      "name": "Neo-Cyber Wardrobe",
+      "description": "Futuristic neon-tinted dark mode with holographic cards, glassmorphic overlays, and heavy interactive canvas viewports for 3D model manipulation.",
+      "status": "EXPLORED"
+    }
+  ],
+  "typography": {
+    "font_family_heading": "'Playfair Display', 'Cormorant Garamond', Georgia, serif",
+    "font_family_subheading": "'Outfit', 'Plus Jakarta Sans', sans-serif",
+    "font_family_body": "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+    "font_family_mono": "'JetBrains Mono', monospace",
+    "scale": {
+      "hero_h1": "text-4xl sm:text-5xl lg:text-6xl font-serif tracking-tight leading-[1.08]",
+      "section_h2": "text-2xl sm:text-3xl lg:text-4xl font-serif tracking-tight leading-snug",
+      "subsection_h3": "text-xl sm:text-2xl font-sans font-semibold tracking-tight",
+      "card_h4": "text-lg sm:text-xl font-sans font-medium tracking-normal",
+      "body_large": "text-lg font-sans leading-relaxed text-muted-foreground",
+      "body_base": "text-base font-sans leading-relaxed",
+      "body_small": "text-sm font-sans leading-normal",
+      "caption_overline": "text-xs font-mono uppercase tracking-[0.2em] text-muted-foreground"
+    }
+  },
+  "colors": {
+    "light_mode": {
+      "background": "#FBFBF9",
+      "foreground": "#121212",
+      "card": "#FFFFFF",
+      "card_foreground": "#121212",
+      "popover": "#FFFFFF",
+      "popover_foreground": "#121212",
+      "primary": "#121212",
+      "primary_foreground": "#FAF9F5",
+      "secondary": "#F3F2EE",
+      "secondary_foreground": "#1A1A1A",
+      "muted": "#EFECE6",
+      "muted_foreground": "#6E6B64",
+      "accent": "#E8E4DA",
+      "accent_foreground": "#121212",
+      "accent_brand": "#D4AF37",
+      "accent_brand_muted": "#F5EFE0",
+      "destructive": "#DC2626",
+      "destructive_foreground": "#FFFFFF",
+      "border": "#E4E0D7",
+      "input": "#E4E0D7",
+      "ring": "#121212"
+    },
+    "dark_mode": {
+      "background": "#0B0C0E",
+      "foreground": "#F4F4F5",
+      "card": "#121418",
+      "card_foreground": "#F4F4F5",
+      "popover": "#121418",
+      "popover_foreground": "#F4F4F5",
+      "primary": "#F4F4F5",
+      "primary_foreground": "#0B0C0E",
+      "secondary": "#1E2229",
+      "secondary_foreground": "#F4F4F5",
+      "muted": "#1E2229",
+      "muted_foreground": "#9CA3AF",
+      "accent": "#272D37",
+      "accent_foreground": "#F4F4F5",
+      "accent_brand": "#E6C265",
+      "accent_brand_muted": "#2A2312",
+      "destructive": "#EF4444",
+      "destructive_foreground": "#FFFFFF",
+      "border": "#272B33",
+      "input": "#272B33",
+      "ring": "#E6C265"
+    }
+  },
+  "spacing_and_layout": {
+    "generous_padding_philosophy": "Containers with borders must use p-6 or p-8 minimum to prevent content text collision. Section margins should be py-16 to py-24 for luxurious breathing room.",
+    "bento_grid": "Grid containers use gap-6 or gap-8. Hero items span col-span-full md:col-span-8 row-span-2. Supporting visual cards span col-span-4.",
+    "container_max_width": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8"
+  },
+  "component_styles": {
+    "Button": "Pill or sharp rounded-full/rounded-md, high contrast hover transition-colors focus:ring-2 focus:ring-offset-2. Primary: bg-primary text-primary-foreground hover:bg-primary/90. Secondary: bg-secondary text-secondary-foreground hover:bg-secondary/80. Accent VTO CTA: bg-amber-500 text-black font-semibold hover:bg-amber-400.",
+    "Card": "Flat surface with 1px border (border-border), rounded-xl, shadow-sm hover:shadow-md transition-shadow duration-300 bg-card text-card-foreground overflow-hidden",
+    "Input": "rounded-lg border-input bg-background/50 backdrop-blur-sm px-4 py-2.5 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    "Dialog": "Glassmorphism backdrop (backdrop-blur-xl bg-black/60 dark:bg-black/80), dialog content bg-card border border-border/80 rounded-2xl shadow-2xl p-6 sm:p-8 max-w-lg w-full",
+    "Tabs": "TabList: bg-muted p-1 rounded-full flex gap-1 h-auto. TabTrigger: rounded-full px-5 py-2 text-sm font-medium transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+    "Table": "Dense luxury layout, border-collapse, header with text-xs font-mono uppercase tracking-wider text-muted-foreground border-b border-border bg-muted/40, rows hover:bg-muted/30 transition-colors",
+    "Badge": "rounded-full px-3 py-1 text-xs font-medium border border-border/60 bg-secondary text-secondary-foreground flex items-center gap-1.5 w-fit",
+    "Toast": "Sonner toast popup with glassmorphic backdrop, crisp borders, and dark/light color match. Position top-right or bottom-right.",
+    "Dropdown": "DO NOT use transparent background! MUST use bg-popover text-popover-foreground border border-border rounded-xl shadow-xl p-1 z-50 min-w-[10rem]"
+  },
+  "page_layouts": {
+    "landing": {
+      "hero": "Split editorial banner with high-fashion model backdrop, glassmorphic floating VTO feature teaser badge, bold heading 'The Atelier of Intelligent Style', primary CTA 'Experience AI Virtual Try-On' + secondary CTA 'Explore Catalog'",
+      "features": "Bento Grid displaying: 1. AI Body Estimation (Photo/Camera), 2. Outfit Canvas Builder, 3. External Shopping Links (Lazada/Shopee PH), 4. Personal Wardrobe Storage",
+      "ph_brands_showcase": "Partner brand carousel/grid featuring Philippine fashion & retail links (Zalora PH, Bench, Kultura, Shopee, Lazada) with clear external shop badge",
+      "vto_demo_teaser": "Interactive preview box showcasing simulated garment draping before and after"
+    },
+    "catalog": {
+      "filters": "Sticky sidebar or top filter bar: Categories (Tops, Bottoms, Dresses, Jackets, Jewelry, Accessories, Shoes), Price range, Style Tags (Minimalist, Formal, Casual, Streetwear, Filipiniana), Search bar",
+      "product_grid": "3 to 4 column responsive grid of luxury fashion cards with hover zoom on model/clothing photos, bookmark/wardrobe button, quick try-on action button"
+    },
+    "product_detail": {
+      "layout": "Two-column split view (Left: High-res image gallery with thumbnails & zoom. Right: Product Title, Brand, Category, Style Tags, Price, PH Partner Buy Links, 'Try On This Item' direct action button, Fabric/Care details)"
+    },
+    "try_on_viewer": {
+      "layout": "Interactive Studio Workspace. Split View: Left pane for User Photo/Camera upload + Body Info preset selector; Right pane for AI Render Canvas.",
+      "placeholder_notice": "CRITICAL REQUIREMENT: Must feature a prominent notice banner 'DEVELOPMENT / INTEGRATION PLACEHOLDER — AI Engine Adapter in Mock Mode' with simulated rendering progress loader, keypoints overlay toggle, and confidence score widget."
+    },
+    "outfit_builder": {
+      "layout": "Canvas Drag/Select Workspace. Slots for: Top, Bottom, Dress, Jacket, Jewelry, Accessories, Shoes. Quick wardrobe selector sidebar, total outfit price calculation, 'Save Outfit to Wardrobe' button, and 'Try-On Complete Outfit' trigger."
+    },
+    "wardrobe": {
+      "layout": "Tabbed management hub: 1. Saved Items, 2. Created Outfits, 3. Saved Try-On Render History. Grid items include share, delete, buy external link, and re-try-on actions."
+    },
+    "profile": {
+      "layout": "User Profile & Body Info Settings. Avatar, Name, Email, Height, Weight, Chest/Waist/Hips measurements, Preferred Fit (Tailored, Loose, Oversized), Auth JWT session info card."
+    },
+    "login_signup": {
+      "layout": "Minimalist centered glassmorphic card with tab toggle for Login / Sign Up, email/password fields, remember me, simulated JWT token response feedback."
+    },
+    "admin_dashboard": {
+      "layout": "Desktop-first Admin Portal. Left collapsible sidebar (Overview, Product Catalog, Wardrobe Analytics, User Audits, System Import). Header with theme toggle, search, notification bell, admin profile avatar.",
+      "components": [
+        "KPI Stat Cards (Total Products, Active Try-On Sessions, External Click-throughs, System Latency)",
+        "Data Tables for Product Inventory management (with edit, delete, add modal)",
+        "JSON/CSV Bulk Import Controls for fashion catalog",
+        "Analytics Charts (Try-on activity over time, top try-on categories)",
+        "Audit Logs table with timestamp, user ID, action type, status"
+      ]
+    }
+  },
+  "image_urls": {
+    "hero": "https://images.unsplash.com/photo-1611042553484-d61f84d22784?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwzfHxlZGl0b3JpYWwlMjBmYXNoaW9uJTIwbW9kZWwlMjBzdHVkaW8lMjBwb3J0cmFpdHxlbnwwfHx8fDE3ODk5OTIwODl8MA&ixlib=rb-4.1.0&q=85",
+    "models": [
+      "https://images.unsplash.com/photo-1613915617430-8ab0fd7c6baf?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwxfHxlZGl0b3JpYWwlMjBmYXNoaW9uJTIwbW9kZWwlMjBzdHVkaW8lMjBwb3J0cmFpdHxlbnwwfHx8fDE3ODk5OTIwODl8MA&ixlib=rb-4.1.0&q=85",
+      "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwyfHxlZGl0b3JpYWwlMjBmYXNoaW9uJTIwbW9kZWwlMjBzdHVkaW8lMjBwb3J0cmFpdHxlbnwwfHx8fDE3ODk5OTIwODl8MA&ixlib=rb-4.1.0&q=85",
+      "https://images.pexels.com/photos/24972993/pexels-photo-24972993.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "https://images.pexels.com/photos/1066171/pexels-photo-1066171.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940"
+    ],
+    "clothing_items": [
+      {
+        "category": "Jacket / Outerwear",
+        "url": "https://images.unsplash.com/photo-1551232864-3f0890e580d9?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwzfHxsdXh1cnklMjBmYXNoaW9uJTIwY2xvdGhpbmclMjBtaW5pbWFsaXN0JTIwb3V0Zml0fGVufDB8fHx8MTc4OTk5MjA4OXww&ixlib=rb-4.1.0&q=85",
+        "title": "Minimalist Tailored Trench Blazer"
+      },
+      {
+        "category": "Outfit / Tops & Bottoms",
+        "url": "https://images.pexels.com/photos/5745783/pexels-photo-5745783.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "title": "Monochrome Oversized Suit Set"
+      },
+      {
+        "category": "Tops & Accessories",
+        "url": "https://images.pexels.com/photos/35675692/pexels-photo-35675692.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "title": "Earthy Knit Top & Pearl Wristlet"
+      },
+      {
+        "category": "Handbags / Accessories",
+        "url": "https://images.unsplash.com/photo-1589363358751-ab05797e5629?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwyfHxsdXh1cnklMjBmYXNoaW9uJTIwY2xvdGhpbmclMjBtaW5pbWFsaXN0JTIwb3V0Zml0fGVufDB8fHx8MTc4OTk5MjA4OXww&ixlib=rb-4.1.0&q=85",
+        "title": "Metallic Structure Tote & Rose Gold Watch"
+      }
+    ],
+    "jewelry_items": [
+      {
+        "category": "Necklace & Earring Set",
+        "url": "https://images.unsplash.com/photo-1721103418218-416182aca079?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwzfHxtb2Rlcm4lMjBqZXdlbHJ5JTIwYWNjZXNzb3JpZXMlMjBwcm9kdWN0JTIwcGhvdG9ncmFwaHl8ZW58MHx8fHwxNzg5OTkyMDg5fDA&ixlib=rb-4.1.0&q=85",
+        "title": "Gold Minimalist Geometric Pendants"
+      },
+      {
+        "category": "Rings & Bands",
+        "url": "https://images.unsplash.com/photo-1543294001-f7cd5d7fb516?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA4Mzl8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBqZXdlbHJ5JTIwYWNjZXNzb3JpZXMlMjBwcm9kdWN0JTIwcGhvdG9ncmFwaHl8ZW58MHx8fHwxNzg5OTkyMDg5fDA&ixlib=rb-4.1.0&q=85",
+        "title": "Studded Gold & Silver Tiered Rings"
+      },
+      {
+        "category": "Silver Pendants",
+        "url": "https://images.pexels.com/photos/9430429/pexels-photo-9430429.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "title": "Sculptural Silver Chain & Band Set"
+      }
+    ]
+  },
+  "instructions_to_main_agent": {
+    "testing_attribute_requirement": "All interactive and key informational elements MUST include a data-testid attribute (e.g., data-testid='try-on-submit-button', data-testid='admin-product-table', data-testid='theme-toggle-button', data-testid='virtual-tryon-placeholder-badge').",
+    "theme_persistence": "Dark/Light theme state MUST persist in localStorage and sync with the HTML class list ('dark' or 'light').",
+    "mock_vto_notice": "In the Virtual Try-On section, explicitly include the 'Development / Integration Placeholder' badge and status banner so users and reviewers know it is a simulated/adapter AI engine for research/thesis purposes.",
+    "shopping_redirects": "Ensure shopping links (Lazada, Shopee, PH local brands) open in a new tab with rel='noopener noreferrer' and do not trigger internal checkout flows.",
+    "shadcn_js_note": "Project files are .js/.jsx, so do not output TypeScript syntax inside JS files."
+  }
+}
