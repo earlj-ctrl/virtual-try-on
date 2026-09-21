@@ -8,6 +8,12 @@ export function AuthProvider({ children }) {
   const [checking, setChecking] = useState(true);
 
   const refresh = useCallback(async () => {
+    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+    // If returning from Google OAuth callback, skip /me — AuthCallback will exchange session_id first.
+    if (typeof window !== "undefined" && window.location.hash?.includes("session_id=")) {
+      setChecking(false);
+      return;
+    }
     try {
       const { data } = await api.get("/auth/me");
       setUser(data);

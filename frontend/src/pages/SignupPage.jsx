@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 
 export default function SignupPage() {
   const { register } = useAuth();
@@ -32,7 +33,17 @@ export default function SignupPage() {
         <p className="overline-label text-muted-foreground">Create Account</p>
         <h1 className="font-serif text-3xl mt-2">Begin your Atelier</h1>
         <p className="text-sm text-muted-foreground mt-2">Free forever. Your photos remain private.</p>
-        <form onSubmit={submit} className="mt-8 space-y-4">
+
+        <div className="mt-6">
+          <GoogleSignInButton label="Sign up with Google" />
+        </div>
+        <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="flex-1 h-px bg-border" />
+          <span className="uppercase tracking-wider">or with email</span>
+          <span className="flex-1 h-px bg-border" />
+        </div>
+
+        <form onSubmit={submit} className="space-y-4">
           <div>
             <Label htmlFor="name">Name</Label>
             <Input data-testid="signup-name" id="name" value={name} onChange={(e)=>setName(e.target.value)} required />

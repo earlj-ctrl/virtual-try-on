@@ -1,5 +1,5 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/context/AuthContext";
 import { ThemeProvider } from "@/context/ThemeContext";
@@ -16,45 +16,58 @@ import TryOnPage from "@/pages/TryOnPage";
 import OutfitBuilderPage from "@/pages/OutfitBuilderPage";
 import WardrobePage from "@/pages/WardrobePage";
 import ProfilePage from "@/pages/ProfilePage";
+import AuthCallback from "@/pages/AuthCallback";
 import AdminLayout, { AdminOverview } from "@/pages/admin/AdminLayout";
 import AdminProducts from "@/pages/admin/AdminProducts";
 import { AdminUsers, AdminAudit } from "@/pages/admin/AdminOther";
 import AdminImport from "@/pages/admin/AdminImport";
 import AdminExport from "@/pages/admin/AdminExport";
 
+// REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+function AppRouter() {
+  const location = useLocation();
+  // Intercept Emergent OAuth callback synchronously (before ProtectedRoute runs)
+  if (location.hash?.includes("session_id=")) {
+    return <AuthCallback />;
+  }
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/signup" element={<SignupPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/catalog" element={<CatalogPage />} />
+      <Route path="/product/:id" element={<ProductDetailPage />} />
+      <Route path="/try-on" element={<ProtectedRoute><TryOnPage /></ProtectedRoute>} />
+      <Route path="/outfit-builder" element={<ProtectedRoute><OutfitBuilderPage /></ProtectedRoute>} />
+      <Route path="/wardrobe" element={<ProtectedRoute><WardrobePage /></ProtectedRoute>} />
+      <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+
+      <Route path="/admin" element={<ProtectedRoute adminOnly><AdminLayout /></ProtectedRoute>}>
+        <Route index element={<AdminOverview />} />
+        <Route path="products" element={<AdminProducts />} />
+        <Route path="import" element={<AdminImport />} />
+        <Route path="users" element={<AdminUsers />} />
+        <Route path="audit" element={<AdminAudit />} />
+        <Route path="export" element={<AdminExport />} />
+      </Route>
+    </Routes>
+  );
+}
+
 function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <BrowserRouter>
+      <BrowserRouter>
+        <AuthProvider>
           <div className="App min-h-screen bg-background text-foreground">
             <Navbar />
-            <Routes>
-              <Route path="/" element={<LandingPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/signup" element={<SignupPage />} />
-              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-              <Route path="/reset-password" element={<ResetPasswordPage />} />
-              <Route path="/catalog" element={<CatalogPage />} />
-              <Route path="/product/:id" element={<ProductDetailPage />} />
-              <Route path="/try-on" element={<ProtectedRoute><TryOnPage /></ProtectedRoute>} />
-              <Route path="/outfit-builder" element={<ProtectedRoute><OutfitBuilderPage /></ProtectedRoute>} />
-              <Route path="/wardrobe" element={<ProtectedRoute><WardrobePage /></ProtectedRoute>} />
-              <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
-
-              <Route path="/admin" element={<ProtectedRoute adminOnly><AdminLayout /></ProtectedRoute>}>
-                <Route index element={<AdminOverview />} />
-                <Route path="products" element={<AdminProducts />} />
-                <Route path="import" element={<AdminImport />} />
-                <Route path="users" element={<AdminUsers />} />
-                <Route path="audit" element={<AdminAudit />} />
-                <Route path="export" element={<AdminExport />} />
-              </Route>
-            </Routes>
+            <AppRouter />
             <Toaster position="top-right" richColors />
           </div>
-        </BrowserRouter>
-      </AuthProvider>
+        </AuthProvider>
+      </BrowserRouter>
     </ThemeProvider>
   );
 }

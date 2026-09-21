@@ -23,6 +23,13 @@ Web-Based AI Virtual Fashion Try-On (research/thesis project) with automated pro
 - Admin route protection enforced server-side
 
 ## What's implemented
+### 2026-02 (iteration 4)
+- **Emergent Google Sign-In** alongside existing JWT auth:
+  - Backend `/api/auth/google/callback` exchanges Emergent Auth `session_id` server-side, finds-or-creates user by email, sets `google_id`/`avatar_url`/`auth_provider=google`, then issues the **same JWT cookies** used by email auth (existing `get_current_user` works unchanged)
+  - Frontend: `AppRouter` intercepts `#session_id=` synchronously (uses `useLocation().hash`, not `window.location.hash`), routes to `<AuthCallback />` with `useRef` guard; `AuthContext` skips `/auth/me` when callback is in progress
+  - `GoogleSignInButton` on Login & Signup redirects to `https://auth.emergentagent.com/?redirect={window.location.origin}/catalog` — redirect URL derived from browser location, NOT hardcoded
+  - Users created via Google get a random unusable password hash so email-login can't accidentally succeed for them
+
 ### 2026-02 (iteration 3)
 - **Pixel Avatar**: `/api/pixel-avatars` — Pillow-based pixelator (downscale-LANCZOS → posterise → upscale-NEAREST); stored as private file `kind=pixels`; UI action on every Try-On session card + dedicated Wardrobe tab with Save (download PNG) + Share (Web Share API fallback to download)
 - **Password Reset**: `/api/auth/forgot-password` + `/api/auth/reset-password` — bcrypt hashed, single-use tokens with TTL index (60 min); Resend-managed email via `email_service.send_email` (with G1–G5 gate); reset URL also logged to backend log as a fallback. Front-end: `/forgot-password` + `/reset-password` pages, "Forgot password?" link on Login

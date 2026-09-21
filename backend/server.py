@@ -215,6 +215,10 @@ class ResetPasswordInput(BaseModel):
     password: str = Field(min_length=6)
 
 
+class GoogleCallbackInput(BaseModel):
+    session_id: str
+
+
 class PixelAvatarInput(BaseModel):
     session_id: str
     pixel_size: int = 48
@@ -423,6 +427,76 @@ async def update_profile(update: ProfileUpdate, user: dict = Depends(get_current
         await db.users.update_one({"_id": ObjectId(user["id"])}, {"$set": set_ops})
     updated = await db.users.find_one({"_id": ObjectId(user["id"])})
     return serialize_doc(updated)
+
+
+# -------------------- Password Reset --------------------
+@api.post("/auth/google/callback")
+async def google_callback(input: GoogleCallbackInput, response: Response):
+    """Exchange Emergent Auth session_id for a user session.
+
+    Backend calls Emergent Auth's session-data endpoint (never the frontend).
+    We match/create the user by email and then issue our normal JWT cookies so
+    the rest of the app (which already uses cookie-based JWT) works unchanged.
+    """
+    try:
+        async with _httpx.AsyncClient(timeout=15) as c:
+            r = await c.get(
+                "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+                headers={"X-Session-ID": input.session_id},
+            )
+        if r.status_code >= 400:
+            logger.warning(f"Emergent Auth exchange failed: {r.status_code} {r.text[:200]}")
+            raise HTTPException(status_code=401, detail="Google sign-in failed")
+        data = r.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Emergent Auth network error: {e}")
+        raise HTTPException(status_code=502, detail="Auth provider unreachable")
+
+    email = (data.get("email") or "").lower().strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Google account has no email")
+    name = data.get("name") or email.split("@")[0]
+    picture = data.get("picture") or ""
+    google_id = data.get("id") or ""
+
+    existing = await db.users.find_one({"email": email})
+    now = datetime.now(timezone.utc).isoformat()
+    if existing:
+        await db.users.update_one(
+            {"_id": existing["_id"]},
+            {"$set": {
+                "google_id": google_id,
+                "avatar_url": picture or existing.get("avatar_url"),
+                "last_login_at": now,
+                "auth_provider": existing.get("auth_provider") or "google",
+            }},
+        )
+        uid = str(existing["_id"])
+        role = existing.get("role", "user")
+    else:
+        insert_doc = {
+            "email": email,
+            "name": name,
+            "role": "user",
+            "google_id": google_id,
+            "avatar_url": picture,
+            "auth_provider": "google",
+            "password_hash": hash_password(secrets.token_urlsafe(32)),  # random unusable pw
+            "profile": {},
+            "created_at": now,
+            "last_login_at": now,
+        }
+        r2 = await db.users.insert_one(insert_doc)
+        uid = str(r2.inserted_id)
+        role = "user"
+
+    access = create_access_token(uid, email, role)
+    refresh = create_refresh_token(uid)
+    set_auth_cookies(response, access, refresh)
+    user = await db.users.find_one({"_id": ObjectId(uid)})
+    return serialize_doc(user)
 
 
 # -------------------- Password Reset --------------------

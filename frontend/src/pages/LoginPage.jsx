@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import GoogleSignInButton from "@/components/GoogleSignInButton";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -36,7 +37,17 @@ export default function LoginPage() {
         <p className="text-sm text-muted-foreground mt-2">
           Access your wardrobe, saved outfits, and try-on history.
         </p>
-        <form onSubmit={submit} className="mt-8 space-y-4">
+
+        <div className="mt-6">
+          <GoogleSignInButton label="Continue with Google" />
+        </div>
+        <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="flex-1 h-px bg-border" />
+          <span className="uppercase tracking-wider">or with email</span>
+          <span className="flex-1 h-px bg-border" />
+        </div>
+
+        <form onSubmit={submit} className="space-y-4">
           <div>
             <Label htmlFor="email">Email</Label>
             <Input data-testid="login-email" id="email" type="email" value={email} onChange={(e)=>setEmail(e.target.value)} required autoComplete="email" />
