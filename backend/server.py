@@ -32,6 +32,8 @@ from product_connectors import (
     import_json_feed, import_csv_feed, scrape_lazada, scrape_shopee, scrape_generic_url,
     NormalizedProduct,
 )
+from email_service import send_email, password_reset_html
+from pixel_avatar import make_pixel_avatar
 
 # -------------------- Config --------------------
 MONGO_URL = os.environ["MONGO_URL"]
@@ -204,6 +206,21 @@ class ImportURLInput(BaseModel):
     auto_save: bool = True
 
 
+class ForgotPasswordInput(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordInput(BaseModel):
+    token: str
+    password: str = Field(min_length=6)
+
+
+class PixelAvatarInput(BaseModel):
+    session_id: str
+    pixel_size: int = 48
+    posterize_bits: int = 3
+
+
 class ShoppingClick(BaseModel):
     product_id: str
     platform: str
@@ -291,6 +308,9 @@ async def startup_event():
     await db.try_on_sessions.create_index("user_id")
     await db.audit_logs.create_index("timestamp")
     await db.file_records.create_index([("user_id", 1), ("kind", 1)])
+    await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
+    await db.password_reset_tokens.create_index("token", unique=True)
+    await db.pixel_avatars.create_index("user_id")
     await seed_admin_and_data()
 
     try:
@@ -403,6 +423,58 @@ async def update_profile(update: ProfileUpdate, user: dict = Depends(get_current
         await db.users.update_one({"_id": ObjectId(user["id"])}, {"$set": set_ops})
     updated = await db.users.find_one({"_id": ObjectId(user["id"])})
     return serialize_doc(updated)
+
+
+# -------------------- Password Reset --------------------
+@api.post("/auth/forgot-password")
+async def forgot_password(input: ForgotPasswordInput):
+    email = input.email.lower()
+    user = await db.users.find_one({"email": email})
+    # Don't leak whether the account exists
+    if user:
+        token = secrets.token_urlsafe(32)
+        expires = datetime.now(timezone.utc) + timedelta(hours=1)
+        await db.password_reset_tokens.insert_one({
+            "token": token, "user_id": str(user["_id"]), "email": email,
+            "expires_at": expires, "used": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        reset_url = f"{FRONTEND_URL.rstrip('/')}/reset-password?token={token}"
+        try:
+            result = await send_email(
+                to=email,
+                subject="Reset your AtelierAI password",
+                html=password_reset_html(user.get("name", ""), reset_url),
+            )
+            logger.info(f"Password reset email for {email}: {result}")
+        except Exception as e:
+            logger.error(f"Password reset send error for {email}: {e}")
+        # Always log to backend log so devs can retrieve the link if email is unset
+        logger.warning(f"[PASSWORD RESET] URL for {email}: {reset_url}")
+    return {"ok": True, "message": "If that email is registered, a reset link has been sent."}
+
+
+@api.post("/auth/reset-password")
+async def reset_password(input: ResetPasswordInput):
+    rec = await db.password_reset_tokens.find_one({"token": input.token, "used": False})
+    if not rec:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    # Compare timezone-aware
+    expires = rec["expires_at"]
+    if isinstance(expires, str):
+        expires = datetime.fromisoformat(expires)
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if expires < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Token expired")
+    await db.users.update_one(
+        {"_id": ObjectId(rec["user_id"])},
+        {"$set": {"password_hash": hash_password(input.password)}},
+    )
+    await db.password_reset_tokens.update_one(
+        {"_id": rec["_id"]}, {"$set": {"used": True}}
+    )
+    return {"ok": True}
 
 
 # -------------------- Products (public read) --------------------
@@ -670,6 +742,71 @@ async def delete_session(session_id: str, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=400, detail="Invalid id")
     if r.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
+
+
+# -------------------- Pixel Avatar --------------------
+@api.post("/pixel-avatars")
+async def create_pixel_avatar(input: PixelAvatarInput, user: dict = Depends(get_current_user)):
+    """Convert a saved try-on render into a pixel-art avatar and store as a new file."""
+    try:
+        session = await db.try_on_sessions.find_one({
+            "_id": ObjectId(input.session_id), "user_id": user["id"],
+        })
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid session id")
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    source_file_id = session.get("result_file_id") or session.get("photo_file_id")
+    if not source_file_id:
+        raise HTTPException(status_code=400, detail="Session has no rendered image")
+    src_rec = await db.file_records.find_one({"_id": ObjectId(source_file_id)})
+    if not src_rec:
+        raise HTTPException(status_code=404, detail="Source file missing")
+    src_bytes, _ = storage_client.get_object(src_rec["storage_path"])
+
+    pixel_size = max(16, min(input.pixel_size, 128))
+    posterize = max(1, min(input.posterize_bits, 8))
+    png = await asyncio.to_thread(make_pixel_avatar, src_bytes, pixel_size, 384, posterize)
+    rec = await save_bytes_for_user(user["id"], "pixels", png, "image/png")
+
+    doc = {
+        "user_id": user["id"],
+        "session_id": input.session_id,
+        "file_id": str(rec["_id"]),
+        "pixel_size": pixel_size,
+        "posterize_bits": posterize,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    r = await db.pixel_avatars.insert_one(doc)
+    doc["_id"] = r.inserted_id
+    return serialize_doc(doc)
+
+
+@api.get("/pixel-avatars")
+async def list_pixel_avatars(user: dict = Depends(get_current_user)):
+    docs = await db.pixel_avatars.find({"user_id": user["id"]}).sort("created_at", -1).to_list(length=200)
+    return [serialize_doc(d) for d in docs]
+
+
+@api.delete("/pixel-avatars/{avatar_id}")
+async def delete_pixel_avatar(avatar_id: str, user: dict = Depends(get_current_user)):
+    try:
+        doc = await db.pixel_avatars.find_one({"_id": ObjectId(avatar_id), "user_id": user["id"]})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id")
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    # Soft-delete the file record
+    if doc.get("file_id"):
+        try:
+            await db.file_records.update_one(
+                {"_id": ObjectId(doc["file_id"])},
+                {"$set": {"is_deleted": True}},
+            )
+        except Exception:
+            pass
+    await db.pixel_avatars.delete_one({"_id": doc["_id"]})
     return {"ok": True}
 
 

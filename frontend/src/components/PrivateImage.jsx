@@ -5,7 +5,7 @@ import { api, BACKEND_URL } from "@/lib/api";
  * Renders a private file (photo or try-on render) by fetching it via the
  * ownership-enforced backend endpoint and creating an object URL.
  */
-export default function PrivateImage({ fileId, alt = "", className = "" }) {
+export default function PrivateImage({ fileId, alt = "", className = "", style }) {
   const [src, setSrc] = useState(null);
 
   useEffect(() => {
@@ -28,11 +28,11 @@ export default function PrivateImage({ fileId, alt = "", className = "" }) {
     };
   }, [fileId]);
 
-  if (!fileId) return <div className={`bg-muted ${className}`} />;
+  if (!fileId) return <div className={`bg-muted ${className}`} style={style} />;
   if (!src) {
     return (
-      <div className={`bg-muted animate-pulse ${className}`} data-testid={`file-loading-${fileId}`} />
+      <div className={`bg-muted animate-pulse ${className}`} style={style} data-testid={`file-loading-${fileId}`} />
     );
   }
-  return <img src={src} alt={alt} className={className} data-testid={`file-${fileId}`} />;
+  return <img src={src} alt={alt} className={className} style={style} data-testid={`file-${fileId}`} />;
 }

@@ -49,6 +49,11 @@ export default function LoginPage() {
             {busy ? "Signing in…" : "Sign in"}
           </Button>
         </form>
+        <div className="mt-4 text-center">
+          <Link data-testid="link-forgot" to="/forgot-password" className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-4">
+            Forgot password?
+          </Link>
+        </div>
         <p className="mt-6 text-sm text-center text-muted-foreground">
           New here?{" "}
           <Link data-testid="link-signup" to="/signup" className="text-foreground underline underline-offset-4">Create an account</Link>

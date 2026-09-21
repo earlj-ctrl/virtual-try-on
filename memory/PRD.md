@@ -23,6 +23,11 @@ Web-Based AI Virtual Fashion Try-On (research/thesis project) with automated pro
 - Admin route protection enforced server-side
 
 ## What's implemented
+### 2026-02 (iteration 3)
+- **Pixel Avatar**: `/api/pixel-avatars` — Pillow-based pixelator (downscale-LANCZOS → posterise → upscale-NEAREST); stored as private file `kind=pixels`; UI action on every Try-On session card + dedicated Wardrobe tab with Save (download PNG) + Share (Web Share API fallback to download)
+- **Password Reset**: `/api/auth/forgot-password` + `/api/auth/reset-password` — bcrypt hashed, single-use tokens with TTL index (60 min); Resend-managed email via `email_service.send_email` (with G1–G5 gate); reset URL also logged to backend log as a fallback. Front-end: `/forgot-password` + `/reset-password` pages, "Forgot password?" link on Login
+- **Email service**: `email_service.py` implements full Emergent Resend integration playbook — safety-gated HTML template, non-blocking `httpx.AsyncClient`, sender `AtelierAI` display name
+
 ### 2026-02 (iteration 2)
 - **Emergent Object Storage**: user photos + try-on renders uploaded via `storage_client.py`; ownership checks on `/api/files/{id}`; frontend uses `PrivateImage` blob-URL pattern (no auth in URL)
 - **Real Try-On adapter**: `HFIDMVTONAdapter` calls free HuggingFace Space `yisol/IDM-VTON` via gradio_client; graceful fallback to `MockDevelopmentAdapter` on failure with `used_fallback=true` banner
