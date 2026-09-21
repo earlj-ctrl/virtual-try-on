@@ -259,8 +259,11 @@ export default function TryOnPage() {
                           <>
                             <img src={p.image_url} alt="" className="w-full h-full object-cover" />
                             <span
-                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-background/85 backdrop-blur flex items-center justify-center"
+                              role="button"
+                              tabIndex={-1}
+                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-background/85 backdrop-blur flex items-center justify-center cursor-pointer"
                               onClick={(e) => { e.stopPropagation(); clearSlot(s.key); }}
+                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); clearSlot(s.key); } }}
                               data-testid={`clear-slot-${s.key}`}
                             >
                               <X size={10} />
@@ -304,7 +307,7 @@ export default function TryOnPage() {
               </div>
 
               <div className="bg-card border border-border rounded-2xl p-6">
-                <p className="overline-label text-muted-foreground">Step 3 · Adapter</p>
+                <p className="overline-label text-muted-foreground">Rendering adapter</p>
                 <div className="mt-3 space-y-2">
                   {ADAPTERS.map((a) => (
                     <button
