@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, ShoppingBag, Users, ScrollText } from "lucide-react";
+import { LayoutDashboard, ShoppingBag, Users, ScrollText, Download, Upload } from "lucide-react";
 import { api } from "@/lib/api";
 
 const items = [
   { to: "/admin", label: "Overview", icon: LayoutDashboard, end: true },
   { to: "/admin/products", label: "Products", icon: ShoppingBag },
+  { to: "/admin/import", label: "Import", icon: Upload },
   { to: "/admin/users", label: "Users", icon: Users },
   { to: "/admin/audit", label: "Audit Logs", icon: ScrollText },
+  { to: "/admin/export", label: "Research Export", icon: Download },
 ];
 
 export default function AdminLayout() {
@@ -71,8 +73,8 @@ export function AdminOverview() {
         <p className="overline-label text-muted-foreground">Service Health</p>
         <div className="mt-4 space-y-3">
           <HealthRow label="Database" status="Operational" tone="ok" />
-          <HealthRow label="AI Adapter" status="Development Placeholder" tone="warn" />
-          <HealthRow label="Object Storage" status="Base64 (MVP)" tone="warn" />
+          <HealthRow label="AI Adapter" status="Mock + HF IDM-VTON (free)" tone="ok" />
+          <HealthRow label="Object Storage" status="Emergent Object Storage" tone="ok" />
           <HealthRow label="Authentication" status="Operational" tone="ok" />
         </div>
       </div>

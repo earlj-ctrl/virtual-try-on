@@ -4,8 +4,9 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Camera, Upload, Sparkles, AlertTriangle } from "lucide-react";
+import { Camera, Upload, Sparkles, AlertTriangle, Zap } from "lucide-react";
 import { toast } from "sonner";
+import PrivateImage from "@/components/PrivateImage";
 
 async function fileToBase64(file) {
   return new Promise((res, rej) => {
@@ -16,11 +17,17 @@ async function fileToBase64(file) {
   });
 }
 
+const ADAPTERS = [
+  { id: "mock", label: "Mock (Development Placeholder)", desc: "Instant. No real inference." },
+  { id: "hf", label: "HF IDM-VTON (Real, Free)", desc: "Free HuggingFace Space. Slow/queue possible." },
+];
+
 export default function TryOnPage() {
   const [params] = useSearchParams();
   const [photo, setPhoto] = useState(null);
   const [products, setProducts] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [adapter, setAdapter] = useState("mock");
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const videoRef = useRef(null);
@@ -77,9 +84,17 @@ export default function TryOnPage() {
     setBusy(true);
     setResult(null);
     try {
-      const { data } = await api.post("/tryon/generate", { photo_base64: photo, product_ids: selectedIds });
+      const { data } = await api.post("/tryon/generate", {
+        photo_base64: photo, product_ids: selectedIds, adapter,
+      });
       setResult(data);
-      toast.success("Try-on preview ready (Development Placeholder)");
+      if (data.used_fallback) {
+        toast.warning("Real engine failed — showed mock fallback (see notes)");
+      } else if (adapter === "hf") {
+        toast.success("Real IDM-VTON render complete");
+      } else {
+        toast.success("Mock preview ready");
+      }
     } catch (e) {
       toast.error("Try-on failed");
     } finally {
@@ -87,22 +102,21 @@ export default function TryOnPage() {
     }
   };
 
-  const selectedProducts = products.filter((p) => selectedIds.includes(p.id));
+  const showRealBadge = adapter === "hf";
 
   return (
     <main data-testid="tryon-page" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      <Alert data-testid="virtual-tryon-placeholder-badge" className="mb-8 border-brand-gold/50 bg-brand-gold/5">
+      <Alert data-testid="virtual-tryon-placeholder-badge" className="mb-6 border-brand-gold/50 bg-brand-gold/5">
         <AlertTriangle className="h-4 w-4 brand-gold" />
-        <AlertTitle className="font-medium">Development / Integration Placeholder</AlertTitle>
+        <AlertTitle className="font-medium">Two adapters available</AlertTitle>
         <AlertDescription className="text-sm text-muted-foreground">
-          This viewer runs the <span className="font-mono">MockDevelopmentAdapter</span>. Output is a composed
-          preview of your photo + garment images — it is <strong>not</strong> a real VITON-HD render. The
-          architecture is ready for a compatible model server.
+          <strong>Mock</strong> is the honest Development Placeholder — no real inference.
+          <strong> HF IDM-VTON</strong> runs against a free HuggingFace Space and returns a real garment render
+          (slow/queued at times). If it fails, we fall back to Mock and label it clearly.
         </AlertDescription>
       </Alert>
 
       <div className="grid lg:grid-cols-12 gap-8">
-        {/* LEFT: photo + products */}
         <section className="lg:col-span-5 space-y-6">
           <div className="bg-card border border-border rounded-2xl p-6">
             <p className="overline-label text-muted-foreground">Step 1</p>
@@ -158,6 +172,28 @@ export default function TryOnPage() {
             </div>
           </div>
 
+          <div className="bg-card border border-border rounded-2xl p-6">
+            <p className="overline-label text-muted-foreground">Step 3 · Adapter</p>
+            <div className="mt-3 space-y-2">
+              {ADAPTERS.map((a) => (
+                <button
+                  key={a.id}
+                  data-testid={`adapter-${a.id}`}
+                  onClick={() => setAdapter(a.id)}
+                  className={`w-full text-left rounded-lg border p-3 transition ${
+                    adapter === a.id ? "border-foreground bg-secondary" : "border-border hover:bg-muted/30"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium text-sm">{a.label}</p>
+                    {a.id === "hf" && <Zap size={14} className="brand-gold" />}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{a.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <Button
             data-testid="tryon-generate-button"
             size="lg"
@@ -166,11 +202,10 @@ export default function TryOnPage() {
             disabled={busy || !photo || selectedIds.length === 0}
           >
             <Sparkles size={16} />
-            {busy ? "Rendering (mock adapter)…" : "Generate Try-On Preview"}
+            {busy ? (adapter === "hf" ? "Contacting HF Space (may queue 30-60s)…" : "Rendering mock…") : "Generate Try-On"}
           </Button>
         </section>
 
-        {/* RIGHT: result */}
         <section className="lg:col-span-7">
           <div className="bg-card border border-border rounded-2xl p-6 min-h-[600px]">
             <div className="flex items-center justify-between">
@@ -179,7 +214,7 @@ export default function TryOnPage() {
                 <h2 className="font-serif text-2xl mt-1">AI Preview</h2>
               </div>
               {result && (
-                <Badge data-testid="tryon-adapter-badge" className="uppercase tracking-wider text-[10px] bg-brand-gold/15 border-brand-gold/40 brand-gold">
+                <Badge data-testid="tryon-adapter-badge" className={`uppercase tracking-wider text-[10px] ${result.used_fallback || result.adapter === "MockDevelopmentAdapter" ? "bg-amber-500/15 border-amber-500/40 text-amber-600" : "bg-emerald-500/15 border-emerald-500/40 text-emerald-600"}`}>
                   {result.adapter}
                 </Badge>
               )}
@@ -188,7 +223,9 @@ export default function TryOnPage() {
             {busy && (
               <div data-testid="tryon-loading" className="mt-6 h-96 rounded-xl border border-dashed border-border flex flex-col items-center justify-center gap-3">
                 <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-                <p className="text-sm text-muted-foreground">Running mock preprocessing pipeline…</p>
+                <p className="text-sm text-muted-foreground">
+                  {adapter === "hf" ? "Waiting for HuggingFace Space (free tier can queue for up to a minute)…" : "Running mock preprocessing pipeline…"}
+                </p>
               </div>
             )}
 
@@ -201,22 +238,31 @@ export default function TryOnPage() {
             {result && !busy && (
               <div className="mt-6" data-testid="tryon-result">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="rounded-xl overflow-hidden bg-muted aspect-[3/4]">
-                    <img src={result.user_photo} alt="you" className="w-full h-full object-cover" />
-                    <p className="text-xs text-center py-2 text-muted-foreground">Your photo</p>
+                  <div className="rounded-xl overflow-hidden bg-muted aspect-[3/4] flex flex-col">
+                    <PrivateImage fileId={result.photo_file_id} className="flex-1 w-full object-cover" alt="you" />
+                    <p className="text-xs text-center py-2 text-muted-foreground">Your photo (private)</p>
                   </div>
-                  <div className="rounded-xl overflow-hidden bg-muted aspect-[3/4] grid grid-cols-1">
-                    {(result.products_snapshot || []).slice(0, 3).map((p) => (
-                      <img key={p.id} src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
-                    ))}
-                    <p className="text-xs text-center py-2 text-muted-foreground">Selected garments</p>
+                  <div className="rounded-xl overflow-hidden bg-muted aspect-[3/4] flex flex-col">
+                    <PrivateImage fileId={result.result_file_id} className="flex-1 w-full object-cover" alt="rendered" />
+                    <p className="text-xs text-center py-2 text-muted-foreground">Rendered result</p>
                   </div>
                 </div>
-                <div className="mt-4 p-4 bg-muted/40 rounded-xl text-xs text-muted-foreground space-y-1">
-                  <p><span className="font-mono">status:</span> {result.status}</p>
-                  <p><span className="font-mono">duration_ms:</span> {result.duration_ms}</p>
-                  <p><span className="font-mono">confidence:</span> {result.confidence} <span className="italic">(mock — not real inference)</span></p>
-                  <p><span className="font-mono">notes:</span> {result.notes}</p>
+
+                {result.used_fallback && (
+                  <Alert className="mt-4 border-amber-500/50 bg-amber-500/5">
+                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                    <AlertTitle>Fallback used</AlertTitle>
+                    <AlertDescription className="text-xs text-muted-foreground">
+                      The real HF Space failed ({result.error?.slice(0,120) || "unknown"}) — we showed a mock so your session is not lost.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="mt-4 p-4 bg-muted/40 rounded-xl text-xs text-muted-foreground space-y-1 font-mono">
+                  <p><span>status:</span> {result.status}</p>
+                  <p><span>duration_ms:</span> {result.duration_ms}</p>
+                  <p><span>confidence:</span> {result.confidence}</p>
+                  <p><span>notes:</span> {result.notes}</p>
                 </div>
               </div>
             )}

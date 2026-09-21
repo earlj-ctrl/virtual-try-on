@@ -13,11 +13,25 @@ from typing import List, Optional, Any, Annotated
 
 import bcrypt
 import jwt
+import uuid as _uuid
+import httpx as _httpx
+import csv as _csv
+import io as _io
+import asyncio
+import base64
 from bson import ObjectId
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, status, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, status, Query, Header
+from fastapi.responses import StreamingResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, ConfigDict, EmailStr, BeforeValidator
+
+import storage_client
+from tryon_adapters import MockDevelopmentAdapter, HFIDMVTONAdapter, get_adapter, _decode_data_url
+from product_connectors import (
+    import_json_feed, import_csv_feed, scrape_lazada, scrape_shopee, scrape_generic_url,
+    NormalizedProduct,
+)
 
 # -------------------- Config --------------------
 MONGO_URL = os.environ["MONGO_URL"]
@@ -177,6 +191,17 @@ class OutfitInput(BaseModel):
 class TryOnInput(BaseModel):
     photo_base64: str  # user photo (data URL or base64)
     product_ids: List[str]
+    adapter: Optional[str] = "mock"  # "mock" | "hf" (real IDM-VTON)
+
+
+class ImportJSONInput(BaseModel):
+    payload: str
+    auto_save: bool = True
+
+
+class ImportURLInput(BaseModel):
+    url: str
+    auto_save: bool = True
 
 
 class ShoppingClick(BaseModel):
@@ -265,7 +290,13 @@ async def startup_event():
     await db.saved_outfits.create_index("user_id")
     await db.try_on_sessions.create_index("user_id")
     await db.audit_logs.create_index("timestamp")
+    await db.file_records.create_index([("user_id", 1), ("kind", 1)])
     await seed_admin_and_data()
+
+    try:
+        storage_client.init_storage()
+    except Exception as e:
+        logger.warning(f"Object storage init failed at startup (will retry on demand): {e}")
 
     # Write test credentials memory file
     creds_path = Path("/app/memory/test_credentials.md")
@@ -300,11 +331,19 @@ async def root():
 
 @api.get("/health")
 async def health():
+    result = {"database": "unknown", "ai_service": "development_placeholder", "storage": "unknown"}
     try:
         await db.command("ping")
-        return {"database": "operational", "ai_service": "development_placeholder", "storage": "operational"}
-    except Exception as e:
-        return {"database": "unavailable", "error": str(e)}
+        result["database"] = "operational"
+    except Exception:
+        result["database"] = "unavailable"
+    try:
+        storage_client.init_storage()
+        result["storage"] = "operational (emergent object storage)"
+    except Exception:
+        result["storage"] = "unavailable"
+    result["ai_service"] = "mock + hf_idm_vton (free space, best-effort)"
+    return result
 
 
 # -------------------- Auth --------------------
@@ -475,40 +514,131 @@ async def delete_outfit(outfit_id: str, user: dict = Depends(get_current_user)):
     return {"ok": True}
 
 
-# -------------------- Try-On (Development Placeholder Adapter) --------------------
+# -------------------- Files (private, owner-only) --------------------
+async def save_bytes_for_user(user_id: str, kind: str, data: bytes, content_type: str) -> dict:
+    """Upload to object storage and record in DB. Returns file record."""
+    ext = {
+        "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg",
+        "image/webp": "webp", "image/gif": "gif",
+    }.get(content_type, "bin")
+    filename = f"{_uuid.uuid4()}.{ext}"
+    path = storage_client.user_path(user_id, kind, filename)
+    result = storage_client.put_object(path, data, content_type)
+    record = {
+        "user_id": user_id,
+        "kind": kind,
+        "storage_path": result["path"],
+        "content_type": content_type,
+        "size": result.get("size", len(data)),
+        "is_deleted": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    r = await db.file_records.insert_one(record)
+    record["_id"] = r.inserted_id
+    return record
+
+
+@api.get("/files/{file_id}")
+async def get_file(file_id: str, user: dict = Depends(get_current_user)):
+    try:
+        rec = await db.file_records.find_one({"_id": ObjectId(file_id), "is_deleted": False})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid file id")
+    if not rec:
+        raise HTTPException(status_code=404, detail="Not found")
+    if rec["user_id"] != user["id"] and user.get("role") != "admin":
+        # Admins never access private user photos even so — enforce strict rule
+        raise HTTPException(status_code=403, detail="Forbidden")
+    # Admin cannot view private photos (per PDF policy)
+    if user.get("role") == "admin" and rec["user_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Admin cannot access private user files")
+    data, ct = storage_client.get_object(rec["storage_path"])
+    return Response(content=data, media_type=rec.get("content_type", ct))
+
+
+# -------------------- Try-On --------------------
 @api.post("/tryon/generate")
 async def generate_tryon(input: TryOnInput, user: dict = Depends(get_current_user)):
-    """
-    Development / Integration Placeholder Adapter.
-    This does NOT run a real VITON-HD model. It creates a try-on session record
-    that returns a composed preview using the provided user photo and selected garment(s).
-    The frontend clearly labels this as a placeholder adapter.
-    """
+    """Runs the selected adapter. HF real adapter falls back to Mock on failure.
+    All artefacts (user photo + result render) go to private Object Storage."""
     if not input.photo_base64:
         raise HTTPException(status_code=400, detail="Photo is required")
     if not input.product_ids:
         raise HTTPException(status_code=400, detail="At least one product required")
+
     products = []
     for pid in input.product_ids:
         try:
             p = await db.products.find_one({"_id": ObjectId(pid)})
-            if p:
-                products.append(serialize_doc(p))
+            if p: products.append(serialize_doc(p))
         except Exception:
             continue
+    if not products:
+        raise HTTPException(status_code=404, detail="No valid products")
+
+    # Store user photo in object storage
+    user_bytes, user_ct = _decode_data_url(input.photo_base64)
+    try:
+        photo_rec = await save_bytes_for_user(user["id"], "photos", user_bytes, user_ct)
+    except Exception as e:
+        logger.error(f"Photo upload failed: {e}")
+        raise HTTPException(status_code=500, detail="Could not store photo")
+    photo_file_id = str(photo_rec["_id"])
+
+    # Fetch garment image bytes (first product) for the model
+    garment = products[0]
+    async with _httpx.AsyncClient(timeout=20) as c:
+        try:
+            gr = await c.get(garment["image_url"])
+            gr.raise_for_status()
+            garment_bytes = gr.content
+        except Exception:
+            garment_bytes = user_bytes  # graceful
+
+    # Pick adapter
+    requested = (input.adapter or "mock").lower()
+    adapter = get_adapter(requested)
+    # Run in a thread since gradio_client / bcrypt are blocking
+    result = await asyncio.to_thread(
+        adapter.run, input.photo_base64, garment_bytes, garment.get("name", "")
+    )
+
+    # If HF failed, fall back to Mock so the user still sees a preview
+    used_fallback = False
+    if result.status == "FAILED" and requested != "mock":
+        used_fallback = True
+        result = await asyncio.to_thread(
+            MockDevelopmentAdapter().run, input.photo_base64, garment_bytes, garment.get("name", "")
+        )
+
+    # Store rendered result
+    result_file_id = None
+    if result.result_image_bytes:
+        try:
+            rrec = await save_bytes_for_user(
+                user["id"], "renders", result.result_image_bytes, result.result_content_type
+            )
+            result_file_id = str(rrec["_id"])
+        except Exception as e:
+            logger.warning(f"Render upload failed: {e}")
+
     session = {
         "user_id": user["id"],
-        "adapter": "MockDevelopmentAdapter",
-        "adapter_label": "Development / Integration Placeholder",
-        "status": "COMPLETED",
+        "adapter": result.adapter,
+        "adapter_label": result.adapter_label,
+        "requested_adapter": requested,
+        "used_fallback": used_fallback,
+        "status": result.status,
         "started_at": datetime.now(timezone.utc).isoformat(),
         "completed_at": datetime.now(timezone.utc).isoformat(),
-        "duration_ms": 1200,
-        "confidence": 0.62,
+        "duration_ms": result.duration_ms,
+        "confidence": result.confidence,
+        "error": result.error,
+        "notes": result.notes,
         "product_ids": input.product_ids,
         "products_snapshot": products,
-        "user_photo": input.photo_base64,
-        "notes": "This output is composed from user photo + product images. It is NOT VITON-HD.",
+        "photo_file_id": photo_file_id,
+        "result_file_id": result_file_id,
     }
     r = await db.try_on_sessions.insert_one(session)
     session["_id"] = r.inserted_id
@@ -648,6 +778,160 @@ async def admin_users(_admin: dict = Depends(require_admin)):
 async def admin_audit(_admin: dict = Depends(require_admin), limit: int = 100):
     docs = await db.audit_logs.find({}).sort("timestamp", -1).to_list(length=limit)
     return [serialize_doc(d) for d in docs]
+
+
+# -------------------- Admin: Product Import Connectors --------------------
+async def _persist_imported(products, admin_id: str, source: str) -> int:
+    """Upsert by (source_platform + source_id) if id present, else by (name + brand)."""
+    now = datetime.now(timezone.utc).isoformat()
+    saved = 0
+    for p in products:
+        doc = {
+            "name": p.name, "description": p.description, "brand": p.brand,
+            "category": p.category, "subcategory": p.subcategory,
+            "style": p.style, "color": p.color, "price": p.price, "currency": p.currency,
+            "image_url": p.image_url, "source_platform": p.source_platform,
+            "source_url": p.source_url, "source_id": p.source_id,
+            "tags": p.tags, "active": True, "updated_at": now, "imported_at": now,
+            "created_by_admin": admin_id,
+        }
+        if p.source_id:
+            filt = {"source_platform": p.source_platform, "source_id": p.source_id}
+        else:
+            filt = {"name": p.name, "brand": p.brand}
+        existing = await db.products.find_one(filt)
+        if existing:
+            # respect admin-corrections: skip fields flagged as admin_edited
+            if not existing.get("admin_edited"):
+                await db.products.update_one({"_id": existing["_id"]}, {"$set": doc})
+        else:
+            doc["created_at"] = now
+            await db.products.insert_one(doc)
+        saved += 1
+    if saved:
+        await db.audit_logs.insert_one({
+            "admin_id": admin_id, "action": f"import.{source}", "resource_id": None,
+            "timestamp": now, "status": "success", "metadata": {"count": saved},
+        })
+    return saved
+
+
+@api.post("/admin/import/json")
+async def admin_import_json(input: ImportJSONInput, admin: dict = Depends(require_admin)):
+    outcome = import_json_feed(input.payload)
+    saved = 0
+    if input.auto_save and outcome.products:
+        saved = await _persist_imported(outcome.products, admin["id"], "json_feed")
+    await db.import_jobs.insert_one({
+        "admin_id": admin["id"], "source": "json_feed", "status": outcome.status,
+        "imported": outcome.imported, "saved": saved, "errors": outcome.errors,
+        "error_samples": outcome.error_samples, "message": outcome.message,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    return {
+        "status": outcome.status, "imported": outcome.imported, "saved": saved,
+        "errors": outcome.errors, "error_samples": outcome.error_samples,
+        "message": outcome.message,
+    }
+
+
+@api.post("/admin/import/url")
+async def admin_import_url(input: ImportURLInput, admin: dict = Depends(require_admin)):
+    outcome = await asyncio.to_thread(scrape_generic_url, input.url)
+    saved = 0
+    if input.auto_save and outcome.products:
+        saved = await _persist_imported(outcome.products, admin["id"], outcome.source)
+    await db.import_jobs.insert_one({
+        "admin_id": admin["id"], "source": outcome.source, "status": outcome.status,
+        "url": input.url, "imported": outcome.imported, "saved": saved,
+        "errors": outcome.errors, "error_samples": outcome.error_samples,
+        "message": outcome.message, "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+    return {
+        "status": outcome.status, "source": outcome.source, "imported": outcome.imported,
+        "saved": saved, "errors": outcome.errors, "error_samples": outcome.error_samples,
+        "message": outcome.message,
+        "products_preview": [
+            {"name": p.name, "brand": p.brand, "price": p.price, "image_url": p.image_url,
+             "category": p.category, "source_url": p.source_url}
+            for p in outcome.products[:5]
+        ],
+    }
+
+
+@api.get("/admin/import/jobs")
+async def admin_import_jobs(_admin: dict = Depends(require_admin), limit: int = 50):
+    docs = await db.import_jobs.find({}).sort("timestamp", -1).to_list(length=limit)
+    return [serialize_doc(d) for d in docs]
+
+
+# -------------------- Admin: Research Export --------------------
+def _anon(user_id: str) -> str:
+    """Deterministic anonymised user id (research-friendly)."""
+    import hashlib
+    return "u_" + hashlib.sha256((user_id + JWT_SECRET).encode()).hexdigest()[:12]
+
+
+async def _build_export_rows() -> list[dict]:
+    rows = []
+    async for s in db.try_on_sessions.find({}):
+        rows.append({
+            "type": "tryon",
+            "anon_user_id": _anon(s.get("user_id", "")),
+            "adapter": s.get("adapter"),
+            "status": s.get("status"),
+            "duration_ms": s.get("duration_ms"),
+            "confidence": s.get("confidence"),
+            "used_fallback": s.get("used_fallback"),
+            "product_count": len(s.get("product_ids") or []),
+            "product_categories": ",".join(sorted({p.get("category", "") for p in (s.get("products_snapshot") or [])})),
+            "timestamp": s.get("started_at"),
+            "target_product_id": None,
+            "platform": None,
+        })
+    async for c in db.shopping_clicks.find({}):
+        rows.append({
+            "type": "shopping_click",
+            "anon_user_id": _anon(c.get("user_id") or "anonymous"),
+            "adapter": None, "status": None, "duration_ms": None, "confidence": None,
+            "used_fallback": None, "product_count": None, "product_categories": None,
+            "timestamp": c.get("timestamp"),
+            "target_product_id": c.get("product_id"),
+            "platform": c.get("platform"),
+        })
+    async for o in db.saved_outfits.find({}):
+        rows.append({
+            "type": "saved_outfit",
+            "anon_user_id": _anon(o.get("user_id", "")),
+            "adapter": None, "status": None, "duration_ms": None, "confidence": None,
+            "used_fallback": None,
+            "product_count": len(o.get("items") or {}),
+            "product_categories": ",".join(sorted((o.get("items") or {}).keys())),
+            "timestamp": o.get("created_at"),
+            "target_product_id": None, "platform": None,
+        })
+    return rows
+
+
+@api.get("/admin/export")
+async def admin_export(format: str = Query("json"), _admin: dict = Depends(require_admin)):
+    rows = await _build_export_rows()
+    if format.lower() == "csv":
+        buf = _io.StringIO()
+        cols = [
+            "type", "anon_user_id", "timestamp", "adapter", "status", "duration_ms",
+            "confidence", "used_fallback", "product_count", "product_categories",
+            "target_product_id", "platform",
+        ]
+        w = _csv.DictWriter(buf, fieldnames=cols)
+        w.writeheader()
+        for r in rows: w.writerow({k: r.get(k) for k in cols})
+        return PlainTextResponse(
+            buf.getvalue(),
+            headers={"Content-Disposition": 'attachment; filename="atelier_export.csv"'},
+            media_type="text/csv",
+        )
+    return {"count": len(rows), "rows": rows}
 
 
 # -------------------- Register routes and CORS --------------------

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
+import PrivateImage from "@/components/PrivateImage";
 
 export default function WardrobePage() {
   const [items, setItems] = useState([]);
@@ -106,10 +107,10 @@ export default function WardrobePage() {
               {sessions.map((s) => (
                 <div key={s.id} className="bg-card border border-border rounded-xl overflow-hidden relative" data-testid={`session-${s.id}`}>
                   <div className="aspect-[3/4] bg-muted">
-                    {s.user_photo && <img src={s.user_photo} alt="" className="w-full h-full object-cover" />}
+                    <PrivateImage fileId={s.result_file_id || s.photo_file_id} className="w-full h-full object-cover" />
                   </div>
                   <div className="p-3">
-                    <p className="text-xs text-muted-foreground font-mono">{s.adapter}</p>
+                    <p className="text-xs text-muted-foreground font-mono truncate">{s.adapter}</p>
                     <p className="text-xs">{new Date(s.started_at).toLocaleString()}</p>
                   </div>
                   <button data-testid={`session-remove-${s.id}`} onClick={() => removeSession(s.id)} className="absolute top-2 right-2 w-8 h-8 bg-background/85 backdrop-blur rounded-full flex items-center justify-center">

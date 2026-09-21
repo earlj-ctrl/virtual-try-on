@@ -17,6 +17,8 @@ import ProfilePage from "@/pages/ProfilePage";
 import AdminLayout, { AdminOverview } from "@/pages/admin/AdminLayout";
 import AdminProducts from "@/pages/admin/AdminProducts";
 import { AdminUsers, AdminAudit } from "@/pages/admin/AdminOther";
+import AdminImport from "@/pages/admin/AdminImport";
+import AdminExport from "@/pages/admin/AdminExport";
 
 function App() {
   return (
@@ -39,8 +41,10 @@ function App() {
               <Route path="/admin" element={<ProtectedRoute adminOnly><AdminLayout /></ProtectedRoute>}>
                 <Route index element={<AdminOverview />} />
                 <Route path="products" element={<AdminProducts />} />
+                <Route path="import" element={<AdminImport />} />
                 <Route path="users" element={<AdminUsers />} />
                 <Route path="audit" element={<AdminAudit />} />
+                <Route path="export" element={<AdminExport />} />
               </Route>
             </Routes>
             <Toaster position="top-right" richColors />
