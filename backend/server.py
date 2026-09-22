@@ -903,7 +903,8 @@ async def unfavorite_session(session_id: str, user: dict = Depends(get_current_u
         raise HTTPException(status_code=400, detail="Invalid id")
     if r.matched_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
-    return {"ok": True}
+    updated = await db.try_on_sessions.find_one({"_id": ObjectId(session_id)})
+    return serialize_doc(updated)
 
 
 @api.get("/tryon/favorites")
