@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Camera, Upload, Sparkles, AlertTriangle, Zap, X, ChevronRight, RotateCcw } from "lucide-react";
+import { Camera, Upload, Sparkles, AlertTriangle, Zap, X, ChevronRight, RotateCcw, Heart } from "lucide-react";
 import { toast } from "sonner";
 import PrivateImage from "@/components/PrivateImage";
 
@@ -40,7 +40,9 @@ export default function TryOnPage() {
   const [outfit, setOutfit] = useState({}); // {slot_key: product}
   const [activeSlot, setActiveSlot] = useState("top");
   const [adapter, setAdapter] = useState("mock");
+  const [view, setView] = useState("front"); // front | side | rear
   const [result, setResult] = useState(null);
+  const [favoriting, setFavoriting] = useState(false);
   const [busy, setBusy] = useState(false);
   const videoRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -119,7 +121,7 @@ export default function TryOnPage() {
   const generate = async () => {
     if (!photo) { toast.error("Add a photo first"); setStep(1); return; }
     if (selectedCount === 0) { toast.error("Pick at least one garment"); setStep(2); return; }
-    setBusy(true); setResult(null); setStep(3);
+    setBusy(true); setResult(null); setStep(3); setView("front");
     try {
       const ids = selectedProducts.map((p) => p.id);
       const { data } = await api.post("/tryon/generate", {
@@ -138,6 +140,27 @@ export default function TryOnPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const toggleFavorite = async () => {
+    if (!result?.id) return;
+    setFavoriting(true);
+    try {
+      if (result.is_favorite) {
+        await api.post(`/tryon/sessions/${result.id}/unfavorite`);
+        setResult((r) => ({ ...r, is_favorite: false }));
+        toast.success("Removed from favorites");
+      } else {
+        const { data } = await api.post(`/tryon/sessions/${result.id}/favorite`);
+        setResult((r) => ({ ...r, ...data }));
+        if (data.auto_pixel_created) {
+          toast.success("Added to favorites · pixel avatar created");
+        } else {
+          toast.success("Added to favorites");
+        }
+      }
+    } catch { toast.error("Failed"); }
+    setFavoriting(false);
   };
 
   const filtered = products.filter((p) => p.category === activeSlot);
@@ -373,11 +396,10 @@ export default function TryOnPage() {
         <section className="lg:col-span-7">
           <Alert data-testid="virtual-tryon-placeholder-badge" className="mb-4 border-brand-gold/50 bg-brand-gold/5">
             <AlertTriangle className="h-4 w-4 brand-gold" />
-            <AlertTitle className="font-medium">2D single-view rendering</AlertTitle>
+            <AlertTitle className="font-medium">Multi-view approximation</AlertTitle>
             <AlertDescription className="text-sm text-muted-foreground">
-              Current adapters produce a <strong>2D front-view render</strong>. Multi-view (side/rear) and 3D/360°
-              rotation described in the objectives require additional pose-conditioning inputs and are on the
-              research roadmap.
+              The <strong>front view</strong> is the real render. <strong>Side and rear</strong> are approximations derived from the front image
+              (mirror + tonal shift) — this is not a true 3D rotation, but it gives a fuller sense of the look.
             </AlertDescription>
           </Alert>
 
@@ -398,7 +420,7 @@ export default function TryOnPage() {
               <div data-testid="tryon-loading" className="mt-6 h-96 rounded-xl border border-dashed border-border flex flex-col items-center justify-center gap-3">
                 <div className="w-10 h-10 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
                 <p className="text-sm text-muted-foreground">
-                  {adapter === "hf" ? "Waiting for HuggingFace Space (free tier can queue up to a minute)…" : "Running mock preprocessing pipeline…"}
+                  {adapter === "hf" ? "Waiting for HuggingFace Space (free tier can queue up to a minute)…" : "Compositing preview…"}
                 </p>
               </div>
             )}
@@ -413,14 +435,44 @@ export default function TryOnPage() {
 
             {result && !busy && (
               <div className="mt-6" data-testid="tryon-result">
-                <div className="grid grid-cols-2 gap-4">
+                {/* View switcher */}
+                <div className="flex items-center gap-1 mb-4 bg-muted rounded-full p-1 w-fit" data-testid="view-switcher">
+                  {[
+                    { id: "front", label: "Front" },
+                    { id: "side", label: "Side (approx.)" },
+                    { id: "rear", label: "Rear (approx.)" },
+                  ].map((v) => (
+                    <button
+                      key={v.id}
+                      data-testid={`view-${v.id}`}
+                      onClick={() => setView(v.id)}
+                      className={`px-4 py-1.5 rounded-full text-xs font-medium transition ${
+                        view === v.id ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="rounded-xl overflow-hidden bg-muted aspect-[3/4] flex flex-col">
                     <PrivateImage fileId={result.photo_file_id} className="flex-1 w-full object-cover" alt="you" />
                     <p className="text-xs text-center py-2 text-muted-foreground">Your photo (private)</p>
                   </div>
-                  <div className="rounded-xl overflow-hidden bg-muted aspect-[3/4] flex flex-col">
-                    <PrivateImage fileId={result.result_file_id} className="flex-1 w-full object-cover" alt="rendered" />
-                    <p className="text-xs text-center py-2 text-muted-foreground">Front view</p>
+                  <div className="rounded-xl overflow-hidden bg-muted aspect-[3/4] flex flex-col relative" data-testid={`tryon-view-${view}`}>
+                    <PrivateImage
+                      fileId={
+                        view === "front" ? result.result_file_id :
+                        view === "side" ? result.side_file_id :
+                        result.rear_file_id
+                      }
+                      className="flex-1 w-full object-cover"
+                      alt={`${view} view`}
+                    />
+                    <p className="text-xs text-center py-2 text-muted-foreground">
+                      {view === "front" ? "Front view" : view === "side" ? "Side view (approximation)" : "Rear view (approximation)"}
+                    </p>
                   </div>
                 </div>
 
@@ -432,6 +484,41 @@ export default function TryOnPage() {
                       The real HF Space failed ({result.error?.slice(0,120) || "unknown"}) — we showed a mock so your session is not lost.
                     </AlertDescription>
                   </Alert>
+                )}
+
+                {/* Favorite action */}
+                <div className="mt-6 p-4 bg-secondary/50 rounded-xl flex items-center justify-between gap-4 flex-wrap">
+                  <div className="flex-1 min-w-[200px]">
+                    <p className="text-sm font-medium">Love this look?</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Adding to favorites also creates a pixel-art mini version for sharing.
+                    </p>
+                  </div>
+                  <Button
+                    data-testid="add-to-favorite"
+                    onClick={toggleFavorite}
+                    disabled={favoriting}
+                    variant={result.is_favorite ? "default" : "outline"}
+                    className="rounded-full gap-2"
+                  >
+                    <Heart size={14} className={result.is_favorite ? "fill-current" : ""} />
+                    {favoriting ? "Saving…" : result.is_favorite ? "Favorited" : "Add to favorite"}
+                  </Button>
+                </div>
+
+                {result.is_favorite && result.pixel_avatar_id && (
+                  <div className="mt-4 p-4 bg-card border border-brand-gold/40 rounded-xl flex items-center gap-4" data-testid="pixel-avatar-preview">
+                    <div className="w-14 h-14 rounded-lg bg-brand-gold/15 border border-brand-gold/40 flex items-center justify-center flex-shrink-0">
+                      <Sparkles size={18} className="brand-gold" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Pixel avatar created</p>
+                      <p className="text-xs text-muted-foreground">See it in your Wardrobe → Pixel Avatars tab</p>
+                    </div>
+                    <Link to="/wardrobe" data-testid="link-view-avatar" className="text-xs underline underline-offset-4">
+                      View →
+                    </Link>
+                  </div>
                 )}
 
                 <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2">

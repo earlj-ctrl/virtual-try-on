@@ -757,8 +757,10 @@ async def generate_tryon(input: TryOnInput, user: dict = Depends(get_current_use
             MockDevelopmentAdapter().run, input.photo_base64, garment_bytes, garment.get("name", "")
         )
 
-    # Store rendered result
+    # Store rendered result (front + side/rear approximations)
     result_file_id = None
+    side_file_id = None
+    rear_file_id = None
     if result.result_image_bytes:
         try:
             rrec = await save_bytes_for_user(
@@ -767,6 +769,18 @@ async def generate_tryon(input: TryOnInput, user: dict = Depends(get_current_use
             result_file_id = str(rrec["_id"])
         except Exception as e:
             logger.warning(f"Render upload failed: {e}")
+    if result.side_image_bytes:
+        try:
+            srec = await save_bytes_for_user(user["id"], "renders", result.side_image_bytes, "image/png")
+            side_file_id = str(srec["_id"])
+        except Exception as e:
+            logger.warning(f"Side view upload failed: {e}")
+    if result.rear_image_bytes:
+        try:
+            rrec2 = await save_bytes_for_user(user["id"], "renders", result.rear_image_bytes, "image/png")
+            rear_file_id = str(rrec2["_id"])
+        except Exception as e:
+            logger.warning(f"Rear view upload failed: {e}")
 
     session = {
         "user_id": user["id"],
@@ -785,6 +799,10 @@ async def generate_tryon(input: TryOnInput, user: dict = Depends(get_current_use
         "products_snapshot": products,
         "photo_file_id": photo_file_id,
         "result_file_id": result_file_id,
+        "side_file_id": side_file_id,
+        "rear_file_id": rear_file_id,
+        "is_favorite": False,
+        "pixel_avatar_id": None,
     }
     r = await db.try_on_sessions.insert_one(session)
     session["_id"] = r.inserted_id
@@ -817,6 +835,83 @@ async def delete_session(session_id: str, user: dict = Depends(get_current_user)
     if r.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Not found")
     return {"ok": True}
+
+
+@api.post("/tryon/sessions/{session_id}/favorite")
+async def favorite_session(session_id: str, user: dict = Depends(get_current_user)):
+    """Mark a try-on session as favorite AND auto-generate a pixel-art mini."""
+    try:
+        session = await db.try_on_sessions.find_one({
+            "_id": ObjectId(session_id), "user_id": user["id"],
+        })
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id")
+    if not session:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    already_favorite = bool(session.get("is_favorite"))
+    pixel_avatar_id = session.get("pixel_avatar_id")
+
+    # Auto-create pixel avatar if not already generated
+    if not pixel_avatar_id:
+        source_file_id = session.get("result_file_id") or session.get("photo_file_id")
+        if source_file_id:
+            try:
+                src_rec = await db.file_records.find_one({"_id": ObjectId(source_file_id)})
+                if src_rec:
+                    src_bytes, _ = storage_client.get_object(src_rec["storage_path"])
+                    png = await asyncio.to_thread(make_pixel_avatar, src_bytes, 40, 384, 3)
+                    rec = await save_bytes_for_user(user["id"], "pixels", png, "image/png")
+                    now = datetime.now(timezone.utc).isoformat()
+                    avatar_doc = {
+                        "user_id": user["id"],
+                        "session_id": session_id,
+                        "file_id": str(rec["_id"]),
+                        "pixel_size": 40,
+                        "posterize_bits": 3,
+                        "auto_generated": True,
+                        "created_at": now,
+                    }
+                    r = await db.pixel_avatars.insert_one(avatar_doc)
+                    pixel_avatar_id = str(r.inserted_id)
+            except Exception as e:
+                logger.warning(f"Auto pixel avatar failed: {e}")
+
+    await db.try_on_sessions.update_one(
+        {"_id": ObjectId(session_id)},
+        {"$set": {
+            "is_favorite": True,
+            "favorited_at": datetime.now(timezone.utc).isoformat(),
+            "pixel_avatar_id": pixel_avatar_id,
+        }},
+    )
+    updated = await db.try_on_sessions.find_one({"_id": ObjectId(session_id)})
+    return {
+        **serialize_doc(updated),
+        "auto_pixel_created": bool(pixel_avatar_id) and not already_favorite,
+    }
+
+
+@api.post("/tryon/sessions/{session_id}/unfavorite")
+async def unfavorite_session(session_id: str, user: dict = Depends(get_current_user)):
+    try:
+        r = await db.try_on_sessions.update_one(
+            {"_id": ObjectId(session_id), "user_id": user["id"]},
+            {"$set": {"is_favorite": False}},
+        )
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid id")
+    if r.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True}
+
+
+@api.get("/tryon/favorites")
+async def list_favorites(user: dict = Depends(get_current_user)):
+    docs = await db.try_on_sessions.find(
+        {"user_id": user["id"], "is_favorite": True}
+    ).sort("favorited_at", -1).to_list(length=200)
+    return [serialize_doc(d) for d in docs]
 
 
 # -------------------- Pixel Avatar --------------------
